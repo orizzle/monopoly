@@ -51,6 +51,9 @@ class Game:
         # Set while the business menu is open.  Everything reached from that
         # menu is drawn in its panel rather than the ordinary turn panel.
         self.in_business = False
+        # Set while a prompt names a colour group, so the name can be
+        # repainted in that group's colours after every redraw.
+        self.group_ink: int | None = None
 
     # ------------------------------------------------------------------
     # Small interaction helpers
@@ -98,10 +101,18 @@ class Game:
         """
         if self.in_business:
             screens.draw_business_screen(self.scr, self.state, lines, deed)
-            return screens.BUSINESS_PANEL
-        screens.draw_turn_screen(self.scr, self.state, title, lines,
-                                 options, deed)
-        return screens.MESSAGE_PANEL
+            panel = screens.BUSINESS_PANEL
+        else:
+            screens.draw_turn_screen(self.scr, self.state, title, lines,
+                                     options, deed)
+            panel = screens.MESSAGE_PANEL
+        # The building prompts name a colour group in the middle of a
+        # sentence and write it in that group's own colours.  Applied here
+        # because every redraw of those screens goes through this, including
+        # the ones ask_number does while it waits for the count.
+        if self.group_ink is not None:
+            screens.paint_group_name(self.scr, panel, lines, self.group_ink)
+        return panel
 
     def hold(self, ms: float) -> None:
         """Wait out one of the original's Delay() beats, when animating."""
@@ -1436,6 +1447,15 @@ class Game:
             return
         cost = rules.house_cost(group)
         name = data.COLOR_GROUPS[group].name
+        try:
+            self.group_ink = group
+            self._buy_units(who, group, name, allowed, now, cost)
+        finally:
+            self.group_ink = None
+
+    def _buy_units(self, who: int, group: int, name: str,
+                   allowed: int, now: int, cost: int) -> None:
+        st = self.state
         # No space after the dollar sign in any of these: the deed card
         # writes "$ 100" in a column, but the prompts write "$50." against
         # the text.  Captured at rows 5-8 of the panel, column 5.
@@ -1499,6 +1519,15 @@ class Game:
             return
         each = rules.sale_value_per_unit(group)
         name = data.COLOR_GROUPS[group].name
+        try:
+            self.group_ink = group
+            self._sell_units(who, group, name, now, each)
+        finally:
+            self.group_ink = None
+
+    def _sell_units(self, who: int, group: int, name: str,
+                    now: int, each: int) -> None:
+        st = self.state
         # One line, with the group's name in it -- "There are 6 units on
         # Cyan." -- not two saying "units on" and "the Cyan group."  The
         # string at CHN 0x69C6 is " units on " and the name is written

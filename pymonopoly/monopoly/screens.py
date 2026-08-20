@@ -302,6 +302,28 @@ def paint_short_names(scr: Screen, panel: tuple[int, int, int, int],
                     col += len(sq.short)
 
 
+def paint_group_name(scr: Screen, panel: tuple[int, int, int, int],
+                     lines: list[str], group: int) -> None:
+    """Repaint a colour group's name inside a message line, in its colours.
+
+    The building prompts write the name in the middle of a sentence and give
+    it the group's own attributes: "units in the Cyan group." has Cyan on
+    cyan while the rest of the line stays on the panel, and so does "There
+    are 6 units on Cyan."  The original sets TextColor and TextBackground
+    from the ColorGroup record's +23 and +25 either side of writing it (CHN
+    load 0x9CD2 and 0x9CE3), which is the same pair the picker rows use.
+    The trailing punctuation is not included -- it keeps the panel's colours.
+    """
+    grp = data.COLOR_GROUPS[group]
+    left, top = panel[0], panel[1]
+    for i, line in enumerate(lines):
+        at = line.find(grp.name)
+        if at < 0:
+            continue
+        scr.write_at(left + 3 + at, top + 3 + i, grp.name,
+                     grp.ttext, grp.tback)
+
+
 def paint_group_rows(scr: Screen, panel: tuple[int, int, int, int],
                      groups: list[int], first_line: int) -> None:
     """Draw the colour-group rows of the picker in each group's own colours.

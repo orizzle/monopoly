@@ -237,6 +237,9 @@ export class Game {
     // Set while the business menu is open: everything reached from it is
     // drawn in that menu's panel rather than the ordinary turn panel.
     this.inBusiness = false;
+    // set while a prompt names a colour group, so the name can be repainted
+    // in that group's colours after every redraw
+    this.groupInk = null;
     this.board = new BoardScreen(DATA);
     this.kb = new Keyboard(document.getElementById("kbd"));
     this.spk = new Speaker();
@@ -348,8 +351,32 @@ export class Game {
     this.paintText();
   }
 
+  // A colour group named mid-sentence is written in that group's own
+  // colours -- "units in the Cyan group." has Cyan on cyan while the rest of
+  // the line stays on the panel.  The original sets TextColor and
+  // TextBackground from the record's +23 and +25 either side of writing it
+  // (CHN load 0x9CD2 and 0x9CE3).  Applied here because every redraw of
+  // those screens comes through panel(), including the ones askNumber does
+  // while it waits for the count.  Trailing punctuation is not included.
+  paintGroupName(bounds, lines) {
+    if (this.groupInk === null || this.groupInk === undefined) return;
+    const grp = GROUPS[this.groupInk];
+    const [l, top] = bounds;
+    lines.forEach((line, i) => {
+      const at_ = line.indexOf(grp.name);
+      if (at_ < 0) return;
+      this.text.write(l + 3 + at_, top + 3 + i, grp.name,
+                      at(grp.ttext, grp.tback));
+    });
+  }
+
   panel(title, lines, options = null, deed = null) {
-    if (this.inBusiness) return this.businessPanel(lines, options, deed);
+    if (this.inBusiness) {
+      const r = this.businessPanel(lines, options, deed);
+      this.paintGroupName(T.businessPanel, lines);
+      this.paintText();
+      return r;
+    }
     const t = this.text;
     t.clear(at(C.LIGHTGRAY, C.BLACK));
     const [l, top, r, bot] = T.messagePanel;
@@ -376,6 +403,7 @@ export class Game {
     }
     if (deed !== null && deed !== undefined) this.deedCard(deed);
     this.cashLine();
+    this.paintGroupName(T.messagePanel, lines);
     this.paintText();
   }
 
@@ -1647,6 +1675,7 @@ export class Game {
     const cost = GROUPS[group].houseCost;
     // No space after the dollar sign in any of these: the deed card writes
     // "$ 100" in a column, but the prompts write "$50." against the text.
+    this.groupInk = group;
     const prompt = "How many units will you buy? ";
     const lines = [`Zoning Regulations allow ${allowed}`,
                    `units in the ${GROUPS[group].name} group.`,
@@ -1654,9 +1683,10 @@ export class Game {
                    `Each unit costs $${cost}.`];
     const count = await this.askNumber(st.players[who].name, lines,
                                        prompt, 1, allowed - now);
-    if (!count) return;
+    if (!count) { this.groupInk = null; return; }
     const total = count * cost;
     if (st.players[who].cash < total) {
+      this.groupInk = null;
       await this.invalid(["You can't afford that."]); return;
     }
     // The total appears two rows under the question, on the screen already
@@ -1668,6 +1698,7 @@ export class Game {
     await this.countCash(who, -total);
     await this.placeUnits(this.distributeUnits(group, count),
                           st.players[who].name, body, +1);
+    this.groupInk = null;
   }
 
   async returnFlow(who) {
@@ -1690,12 +1721,13 @@ export class Game {
     const each = Math.floor(GROUPS[group].houseCost / 2);
     // One line with the group's name in it -- "There are 6 units on Cyan."
     // -- not two saying "units on" and "the Cyan group."
+    this.groupInk = group;
     const prompt = "How many units to return? ";
     const lines = [`There are ${now} units on ${GROUPS[group].name}.`,
                    `Each will bring $${each}.`];
     const count = await this.askNumber(st.players[who].name, lines,
                                        prompt, 1, now);
-    if (!count) return;
+    if (!count) { this.groupInk = null; return; }
     const gain = count * each;
     const body = lines.concat(["", `${prompt}${count}`, "",
                                `That will bring $${gain}.`]);
@@ -1703,6 +1735,7 @@ export class Game {
     await this.collect(who, gain);
     await this.placeUnits(this.collectUnits(group, count),
                           st.players[who].name, body, -1);
+    this.groupInk = null;
   }
 
   async sellFlow(who) {

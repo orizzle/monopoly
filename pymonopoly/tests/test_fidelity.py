@@ -545,6 +545,53 @@ class BuildingScreens(unittest.TestCase):
             (9, "or None... changed my mind."),
         ])
 
+    def attrs(self, name, row, first, last):
+        from verify_pixels import decode_capture
+
+        scr, _ = decode_capture(str(HOUSES / name))
+        return [scr.cell(c, row) for c in range(first, last + 1)]
+
+    def test_the_group_name_is_written_in_its_own_colours(self):
+        """Cyan on cyan, mid-sentence, while the line stays on the panel."""
+        from monopoly import data
+
+        grp = data.COLOR_GROUPS[2]
+        want = (grp.tback << 4) | grp.ttext
+        # "units in the Cyan group." -- the name sits at columns 18..21
+        cells = self.attrs("buy-units.png", 6, 18, 21)
+        self.assertEqual("".join(chr(ch) for ch, _a in cells), "Cyan")
+        self.assertEqual([a for _c, a in cells], [want] * 4)
+        # and the word before it keeps the panel's own colours
+        self.assertNotEqual(self.attrs("buy-units.png", 6, 17, 17)[0][1], want)
+
+    def test_the_return_line_colours_the_name_too(self):
+        from monopoly import data
+
+        grp = data.COLOR_GROUPS[2]
+        want = (grp.tback << 4) | grp.ttext
+        cells = self.attrs("return-units.png", 5, 26, 29)
+        self.assertEqual("".join(chr(ch) for ch, _a in cells), "Cyan")
+        self.assertEqual([a for _c, a in cells], [want] * 4)
+        # the full stop after it does not take the group's colours
+        self.assertNotEqual(self.attrs("return-units.png", 5, 30, 30)[0][1],
+                            want)
+
+    def test_the_port_paints_the_name_the_same_way(self):
+        from monopoly import cga, data, screens
+
+        grp = data.COLOR_GROUPS[2]
+        panel = screens.BUSINESS_PANEL
+        lines = ["Zoning Regulations allow 15", f"units in the {grp.name} group."]
+        scr = cga.Screen()
+        for i, line in enumerate(lines):
+            scr.write_at(panel[0] + 3, panel[1] + 3 + i, line, 15, 2)
+        screens.paint_group_name(scr, panel, lines, 2)
+        at = lines[1].find(grp.name)
+        cells = [scr.cell(panel[0] + 3 + at + i, panel[1] + 4) for i in range(4)]
+        self.assertEqual("".join(chr(ch) for ch, _a in cells), grp.name)
+        self.assertEqual([a for _c, a in cells],
+                         [(grp.tback << 4) | grp.ttext] * 4)
+
     def marks(self, name):
         """The house marks on the deed card: (count of cells, colours)."""
         from verify_pixels import decode_capture
