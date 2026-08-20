@@ -182,23 +182,44 @@ class TestBuilding(unittest.TestCase):
         self.assertEqual(rules.max_units_in_group(4), 15)
         self.assertEqual(rules.max_units_in_group(1), 10)
 
-    def test_units_build_evenly(self):
+    def test_units_go_round_the_group_in_the_records_order(self):
+        """Descending, from the cursor, not fewest-houses-first."""
         self._own_orange()
-        picks = rules.distribute_units(self.st, 4, 3)
-        self.assertEqual(sorted(picks), sorted(data.COLOR_GROUPS[4].members))
+        order = data.COLOR_GROUPS[4].build_order
+        self.assertEqual(order, (19, 18, 16))
+        self.assertEqual(rules.distribute_units(self.st, 4, 3), list(order))
 
-    def test_units_unbuild_evenly(self):
+    def test_the_cursor_carries_over_between_purchases(self):
+        """It lives in the group record, not on the board."""
         self._own_orange()
-        for pos in data.COLOR_GROUPS[4].members:
-            self.st.props[pos].houses = 2
-        picks = rules.collect_units(self.st, 4, 3)
-        self.assertEqual(sorted(picks), sorted(data.COLOR_GROUPS[4].members))
+        first = rules.distribute_units(self.st, 4, 1)
+        second = rules.distribute_units(self.st, 4, 1)
+        self.assertEqual(first, [19])
+        self.assertEqual(second, [18], "the second house is not on the first")
 
-    def test_cannot_exceed_hotel(self):
+    def test_returning_undoes_building_square_for_square(self):
+        self._own_orange()
+        built = rules.distribute_units(self.st, 4, 3)
+        for pos in built:
+            self.st.props[pos].houses += 1
+        self.assertEqual(rules.collect_units(self.st, 4, 3),
+                         list(reversed(built)))
+
+    def test_placement_does_not_police_the_hotel_limit(self):
+        """The cap is on the group's total, and it is checked before this.
+
+        The original increments whichever square the cursor lands on without
+        looking at it -- captured putting a sixth house on Connecticut Avenue,
+        which its deed card then draws no houses for at all.  The guard is
+        the "Too many." test against NumberIn * 5, upstream in the flow.
+        """
         self._own_orange()
         for pos in data.COLOR_GROUPS[4].members:
             self.st.props[pos].houses = 5
-        self.assertEqual(rules.distribute_units(self.st, 4, 3), [])
+        self.assertEqual(len(rules.distribute_units(self.st, 4, 3)), 3)
+        self.assertEqual(rules.units_in_group(self.st, 4),
+                         rules.max_units_in_group(4),
+                         "the flow refuses before it ever gets here")
 
 
 class TestWorth(unittest.TestCase):

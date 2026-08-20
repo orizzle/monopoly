@@ -623,6 +623,14 @@ JAIL_FINE_MS = 1300
 # turn appeared to end the moment the key went down.
 JAIL_ROLL_PAUSE_MS = 1000
 
+# Houses go up and come down one at a time, each with the title deed of the
+# square receiving it drawn on the right and its own burst of sound.  Both
+# loops are at CHN load 0x9FBA (buying) and 0x9932 (returning); the periods
+# are measured off the speaker of a run that bought six units and sold them
+# again -- six bursts 514 ms apart going up, six 464 ms apart coming down.
+BUILD_UNIT_MS = 514
+RETURN_UNIT_MS = 464
+
 # The jail prompt is drawn on the board, not in a text panel.  Measured off a
 # board capture of a game loaded straight into jail, and the gotoxy calls in
 # the routine agree: the question at column 19 row 5, the options at rows 7

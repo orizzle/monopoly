@@ -154,35 +154,58 @@ def sale_value_per_unit(group: int) -> int:
 
 
 def distribute_units(state: GameState, group: int, count: int) -> list[int]:
-    """Choose which squares receive `count` new units, building evenly.
+    """Choose which squares receive `count` new units.
+
+    Not the fewest-houses-first rule this used to apply, which is the modern
+    board-game one.  The original keeps a cursor per colour group -- a word
+    in the group record at CHN load 0x41AB, starting at 1 -- and simply walks
+    it round the members:
+
+        place a unit on member[cursor]
+        cursor := cursor + 1
+        if cursor > NumberIn then cursor := 1
+
+    It never looks at how many houses a square already has.  Two things
+    follow.  The order is the record's own, which is descending, so the first
+    house on the Cyan group goes to Connecticut Avenue and not to Oriental
+    -- captured, with the deed card of each receiving square drawn in turn.
+    And the cursor survives between visits, so where a house lands depends on
+    what was bought and sold on that group before.
 
     Returns the list of board positions to increment, one entry per unit.
     """
-    members = list(data.COLOR_GROUPS[group].members)
+    order = data.COLOR_GROUPS[group].build_order
+    cursor = state.build_cursor.get(group, 1)
     picks: list[int] = []
-    levels = {p: state.props[p].houses for p in members}
     for _ in range(count):
-        candidates = [p for p in members if levels[p] < data.HOUSES_PER_HOTEL]
-        if not candidates:
-            break
-        target = min(candidates, key=lambda p: (levels[p], p))
-        levels[target] += 1
-        picks.append(target)
+        picks.append(order[cursor - 1])
+        cursor += 1
+        if cursor > len(order):
+            cursor = 1
+    state.build_cursor[group] = cursor
     return picks
 
 
 def collect_units(state: GameState, group: int, count: int) -> list[int]:
-    """Choose which squares give up `count` units, unbuilding evenly."""
-    members = list(data.COLOR_GROUPS[group].members)
+    """Choose which squares give up `count` units.
+
+    The mirror image, sharing the same cursor (CHN load 0x994A).  Returning
+    steps the cursor back *before* using it, where building uses it and then
+    steps forward, so a sale undoes a purchase square for square:
+
+        cursor := cursor - 1
+        if cursor < 1 then cursor := NumberIn
+        take a unit from member[cursor]
+    """
+    order = data.COLOR_GROUPS[group].build_order
+    cursor = state.build_cursor.get(group, 1)
     picks: list[int] = []
-    levels = {p: state.props[p].houses for p in members}
     for _ in range(count):
-        candidates = [p for p in members if levels[p] > 0]
-        if not candidates:
-            break
-        target = max(candidates, key=lambda p: (levels[p], -p))
-        levels[target] -= 1
-        picks.append(target)
+        cursor -= 1
+        if cursor < 1:
+            cursor = len(order)
+        picks.append(order[cursor - 1])
+    state.build_cursor[group] = cursor
     return picks
 
 

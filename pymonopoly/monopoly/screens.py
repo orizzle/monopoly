@@ -370,24 +370,38 @@ def _deed_colors(pos: int) -> tuple[int, int, int, int]:
 
 
 def deed_houses(scr: Screen, houses: int, body_bg: int) -> None:
-    """Mark a developed property on its card with solid blocks.
+    """Mark a developed property on its card, at the card's (3,2).
 
-    The original writes character 219 -- a full block -- at the card's (3,2),
-    which is the title band, and the count is the development itself: one
-    block per house, and six for a hotel.  The colour is chosen for contrast
-    against the card: houses come out white on backgrounds 2 and 3 and green
-    otherwise, a hotel white on 4 and 6 and red otherwise (CHN file 0x3BF0
-    and 0x3C95).  The "1 HOUSE" / "HOTEL" caption this port used to print
+    Disassembled at CHN load 0x6959.  Houses and hotels are drawn quite
+    differently, and neither is one block per house:
+
+        if houses = 5 then                        { a hotel }
+            six blocks, no gaps
+        else if houses in [1..4] then
+            for each house: two blocks and a space
+        else
+            nothing at all
+
+    So one house is a two-wide mark with a gap after it, and a hotel is a
+    solid run of six -- captured, and the reason a square carrying six houses
+    shows nothing: it falls outside both arms.  The original can reach that
+    state, because the placement loop increments blindly.
+
+    Colour is picked for contrast against the card: houses white on
+    backgrounds 2 and 3 and green otherwise, a hotel white on 4 and 6 and red
+    otherwise.  The "1 HOUSE" / "HOTEL" caption this port used to print
     appears nowhere in the program.
     """
     left, top = DEED_PANEL[0], DEED_PANEL[1]
-    if houses >= data.HOUSES_PER_HOTEL:
-        count = HOTEL_BLOCKS
+    if houses == data.HOUSES_PER_HOTEL:
+        mark = chr(BLOCK) * HOTEL_BLOCKS
         fg = WHITE if body_bg in (4, 6) else RED
-    else:
-        count = houses
+    elif 1 <= houses < data.HOUSES_PER_HOTEL:
+        mark = (chr(BLOCK) * 2 + " ") * houses
         fg = WHITE if body_bg in (2, 3) else GREEN
-    scr.write_at(left + 2, top + 1, chr(BLOCK) * count, fg, body_bg)
+    else:
+        return
+    scr.write_at(left + 2, top + 1, mark, fg, body_bg)
 
 
 def _deed_frame(scr: Screen, pos: int) -> tuple[int, int]:

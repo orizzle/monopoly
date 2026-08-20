@@ -157,6 +157,9 @@ function newState(names, seed) {
     doubles: 0,
     // display only: titles a repeat roll "<name> again"
     again: false,
+    // where the next house lands on each colour group, one 1-based cursor
+    // per group as the original keeps them in its group records
+    buildCursor: {},
     sound: true,
     chanceOrder: [], chestOrder: [], chanceNext: 0, chestNext: 0,
   };
@@ -492,22 +495,34 @@ export class Game {
       mortgageRow = 14;
     }
     t.write(54, mortgageRow, `Mortgage value is $${mortgageValue(pos)}.`, ink);
-    // What is standing on the property.  The original writes character 219 --
-    // a full block -- at the card's (3,2), which is the title band, and the
-    // count is the development itself: one block per house, six for a hotel.
-    // The colour is picked for contrast against the card, houses white on
-    // backgrounds 2 and 3 and green otherwise, a hotel white on 4 and 6 and
-    // red otherwise (CHN file 0x3BF0 and 0x3C95).  The "1 HOUSE" / "HOTEL"
-    // caption this port used to print appears nowhere in the program.
+    // What is standing on the property, at the card's (3,2).  Disassembled
+    // at CHN load 0x6959: houses and hotels are drawn quite differently, and
+    // neither is one block per house.
+    //
+    //     if houses = 5 then      six blocks, no gaps
+    //     else if houses in [1..4] then
+    //         for each house: two blocks and a space
+    //     else                    nothing at all
+    //
+    // One house is a two-wide mark with a gap after it; a hotel is a solid
+    // run of six.  A square carrying six houses shows nothing, falling
+    // outside both arms -- which the original can reach, because its
+    // placement loop increments blindly.  Colour is for contrast against the
+    // card: houses white on backgrounds 2 and 3 and green otherwise, a hotel
+    // white on 4 and 6 and red otherwise.
     if (this.st) {
       const h = this.st.props[pos].houses;
-      if (h) {
-        const hotel = h >= R.housesPerHotel;
-        const n = hotel ? 6 : h;
-        const fg = hotel ? (bg === 4 || bg === 6 ? C.WHITE : C.RED)
-                         : (bg === 2 || bg === 3 ? C.WHITE : C.GREEN);
+      let mark = null, fg = null;
+      if (h === R.housesPerHotel) {
+        mark = "\u00db".repeat(6);
+        fg = (bg === 4 || bg === 6) ? C.WHITE : C.RED;
+      } else if (h >= 1 && h < R.housesPerHotel) {
+        mark = "\u00db\u00db ".repeat(h);
+        fg = (bg === 2 || bg === 3) ? C.WHITE : C.GREEN;
+      }
+      if (mark) {
         const [dl, dt] = T.deedPanel;
-        t.write(dl + 2, dt + 1, "\u00db".repeat(n), at(fg, bg));
+        t.write(dl + 2, dt + 1, mark, at(fg, bg));
       }
     }
     if (this.st && this.st.props[pos].mortgaged) {
@@ -1424,6 +1439,13 @@ export class Game {
     const st = this.st;
     const ids = groups === null ? GROUP_IDS : GROUP_IDS.filter(
       (g) => groups.includes(g));
+    // One eligible group is taken without asking.  CHN load 0x9078, right
+    // after the counting pass and before anything is drawn:
+    //     if count = 1 then begin Chosen := theOnlyOne; goto done end
+    // Captured both ways: a player owning only Cyan goes from the business
+    // menu straight to "Zoning Regulations allow 15"; one owning Cyan and
+    // Orange is asked which.
+    if (ids.length === 1) return ids[0];
     const keyOf = new Map(T.groupKeys.map(([k, n]) => [n, k]));
     const lines = ["Tell me the color group", prompt, ""];
     for (const g of ids) lines.push(" ".repeat(7) + "~" + GROUPS[g].name);
@@ -1499,31 +1521,62 @@ export class Game {
     return !!g && g.buildable && ownsGroup(this.st, who, group)
       && g.members.every((p) => !this.st.props[p].mortgaged);
   }
-  // Units go on evenly, lowest square first; they come off the same way in
-  // reverse, so a group is never left unbalanced.
+  // Where a house lands is not the fewest-houses-first rule this used to
+  // apply -- that is the modern board game's.  The original keeps a cursor
+  // per colour group, a word in the group record at CHN load 0x41AB starting
+  // at 1, and walks it round the members without ever looking at what is
+  // already built:
+  //
+  //     place on member[cursor];  cursor += 1
+  //     if cursor > NumberIn then cursor := 1
+  //
+  // The order is the record's own, which is descending, so the first house
+  // on the Cyan group goes to Connecticut Avenue and not to Oriental --
+  // captured, with each receiving square's deed card drawn in turn.  The
+  // cursor also survives between visits, so where a house lands depends on
+  // what was bought and sold on that group before.
   distributeUnits(group, count) {
-    const members = GROUPS[group].members.slice();
-    const level = {}; members.forEach((p) => { level[p] = this.st.props[p].houses; });
+    const order = GROUPS[group].buildOrder;
+    let cursor = this.st.buildCursor[group] || 1;
     const picks = [];
     for (let i = 0; i < count; i++) {
-      const c = members.filter((p) => level[p] < R.housesPerHotel);
-      if (!c.length) break;
-      c.sort((a, b) => (level[a] - level[b]) || (a - b));
-      level[c[0]] += 1; picks.push(c[0]);
+      picks.push(order[cursor - 1]);
+      cursor += 1;
+      if (cursor > order.length) cursor = 1;
     }
+    this.st.buildCursor[group] = cursor;
     return picks;
   }
+  // The mirror image, sharing that cursor (CHN load 0x994A).  Returning
+  // steps back *before* using the cursor where building uses it and then
+  // steps forward, so a sale undoes a purchase square for square.
   collectUnits(group, count) {
-    const members = GROUPS[group].members.slice();
-    const level = {}; members.forEach((p) => { level[p] = this.st.props[p].houses; });
+    const order = GROUPS[group].buildOrder;
+    let cursor = this.st.buildCursor[group] || 1;
     const picks = [];
     for (let i = 0; i < count; i++) {
-      const c = members.filter((p) => level[p] > 0);
-      if (!c.length) break;
-      c.sort((a, b) => (level[b] - level[a]) || (a - b));
-      level[c[0]] -= 1; picks.push(c[0]);
+      cursor -= 1;
+      if (cursor < 1) cursor = order.length;
+      picks.push(order[cursor - 1]);
     }
+    this.st.buildCursor[group] = cursor;
     return picks;
+  }
+
+  // Houses go up and come down one at a time, each with the title deed of
+  // the square receiving or giving up the unit drawn on the right and its
+  // own burst of sound -- the sweeps are inside the loop, not around it, so
+  // six houses make six bursts.  Measured off the speaker: 514 ms a house
+  // going up, 464 ms coming down.
+  async placeUnits(squares, title, body, delta) {
+    const cue = delta > 0 ? "build" : "houses_sold";
+    const beat = delta > 0 ? G.buildUnitMs : G.returnUnitMs;
+    for (const pos of squares) {
+      this.st.props[pos].houses += delta;
+      this.panel(title, body, null, pos);
+      this.cue(cue);
+      await sleep(beat);
+    }
   }
 
   // -- the seven business flows -------------------------------------------
@@ -1592,21 +1645,29 @@ export class Game {
       return;
     }
     const cost = GROUPS[group].houseCost;
-    const count = await this.askNumber(st.players[who].name,
-      [`Zoning Regulations allow ${allowed}`,
-       `units in the ${GROUPS[group].name} group.`,
-       `There are ${now || "no"} units now.`,
-       `Each unit costs $ ${cost}.`],
-      "How many units will you buy? ", 1, allowed - now);
+    // No space after the dollar sign in any of these: the deed card writes
+    // "$ 100" in a column, but the prompts write "$50." against the text.
+    const prompt = "How many units will you buy? ";
+    const lines = [`Zoning Regulations allow ${allowed}`,
+                   `units in the ${GROUPS[group].name} group.`,
+                   `There are ${now || "no"} units now.`,
+                   `Each unit costs $${cost}.`];
+    const count = await this.askNumber(st.players[who].name, lines,
+                                       prompt, 1, allowed - now);
     if (!count) return;
     const total = count * cost;
     if (st.players[who].cash < total) {
       await this.invalid(["You can't afford that."]); return;
     }
-    this.cue("build");
+    // The total appears two rows under the question, on the screen already
+    // up -- not in a fresh panel with a "<Press Any Key>".  Then the money
+    // goes, and only then do the houses start going up.
+    const body = lines.concat(["", `${prompt}${count}`, "",
+                               `That will cost $${total}.`]);
+    this.panel(st.players[who].name, body);
     await this.countCash(who, -total);
-    for (const p of this.distributeUnits(group, count)) st.props[p].houses += 1;
-    await this.announce(st.players[who].name, [`That will cost $ ${total}.`]);
+    await this.placeUnits(this.distributeUnits(group, count),
+                          st.players[who].name, body, +1);
   }
 
   async returnFlow(who) {
@@ -1627,16 +1688,21 @@ export class Game {
     }
     // Returned units bring back half what they cost.
     const each = Math.floor(GROUPS[group].houseCost / 2);
-    const count = await this.askNumber(st.players[who].name,
-      [`There are ${now} units on`, `the ${GROUPS[group].name} group.`,
-       `Each will bring $ ${each}.`],
-      "How many units to return? ", 1, now);
+    // One line with the group's name in it -- "There are 6 units on Cyan."
+    // -- not two saying "units on" and "the Cyan group."
+    const prompt = "How many units to return? ";
+    const lines = [`There are ${now} units on ${GROUPS[group].name}.`,
+                   `Each will bring $${each}.`];
+    const count = await this.askNumber(st.players[who].name, lines,
+                                       prompt, 1, now);
     if (!count) return;
-    this.cue("houses_sold");
-    for (const p of this.collectUnits(group, count)) st.props[p].houses -= 1;
     const gain = count * each;
+    const body = lines.concat(["", `${prompt}${count}`, "",
+                               `That will bring $${gain}.`]);
+    this.panel(st.players[who].name, body);
     await this.collect(who, gain);
-    await this.announce(st.players[who].name, [`That will bring $ ${gain}.`]);
+    await this.placeUnits(this.collectUnits(group, count),
+                          st.players[who].name, body, -1);
   }
 
   async sellFlow(who) {

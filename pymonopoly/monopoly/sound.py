@@ -68,6 +68,12 @@ RATTLE_CHUNK_MS = 332
 # A sweep that would run for ages at its original step rate is compressed to
 # this, so the game does not stall on a sound effect.
 SWEEP_CAP_MS = 700
+# How long one whole burst of the building sounds lasts.  Neither loop has a
+# Delay in it, so the length is just how fast the FOR loop runs: measured off
+# the speaker across six houses bought and six sold, a median of 137 ms going
+# up (6204 iterations over four legs) and 42 ms coming down (2904 over four).
+BUILD_BURST_MS = 137
+RETURN_BURST_MS = 42
 SWEEP_STEPS = 24
 
 SAMPLE_RATE = 22050
@@ -340,6 +346,32 @@ def sweep(start: int, end: int, step_ms: int = 1,
             for i in range(SWEEP_STEPS)]
 
 
+def burst(legs: list[tuple[int, int]], total_ms: float,
+          steps_per_leg: int = 12) -> list[tuple[int, float]]:
+    """Several of the original's FOR-loop sweeps, run back to back.
+
+    `sweep` assumes a millisecond a step, which is right for the loops that
+    carry a Delay.  These do not: the buy- and return-houses loops are bare
+    `for i := a to b do Sound(i)`, so a leg lasts exactly as long as the loop
+    takes to run -- about a fiftieth of a millisecond an iteration on the
+    machine this was measured on.  Four legs of it come to a chirp of about a
+    seventh of a second, not the two and three quarter seconds a step-per-
+    millisecond reading gives.
+
+    The measured total is shared between the legs in proportion to how many
+    iterations each one runs, which is what decides their relative lengths.
+    """
+    spans = [abs(b - a) + 1 for a, b in legs]
+    whole = sum(spans)
+    out: list[tuple[int, float]] = []
+    for (a, b), span in zip(legs, spans):
+        n = max(2, min(steps_per_leg, span))
+        per = total_ms * span / whole / n
+        for i in range(n):
+            out.append((round(a + (b - a) * i / (n - 1)), per))
+    return out
+
+
 def shaped(start: int, end: int, ramp_ms: int,
            lead_ms: int = 0, tail_ms: int = 0,
            steps: int = 48) -> list[tuple[int, int]]:
@@ -465,16 +497,28 @@ def _cues() -> dict[str, Cue]:
     add("receive", [(900, 5), (1500, 5)], "CHN 0x3414/0x358B",
         "cash arriving; the same pair as `pay` in a second routine")
     add("spend", [(320, 200)], "CHN 0x71C9", "paying for houses")
-    add("houses_sold", sweep(2500, 1000), "CHN 0x6C69",
-        "returning houses to the bank",
-        glide=(2500, 1000, glide_ms(2500, 1000)))
+    # Four sweeps, not one, and once per unit returned rather than once per
+    # sale.  Read off the loop bounds inside the return-houses loop at CHN
+    # load 0x99C1-0x9B04 -- down 2500->1000, up 1000->1300, down 1300->400,
+    # up 400->600, then Delay(50) -- and confirmed against the speaker: a
+    # sale of six units played six identical bursts of exactly those four
+    # legs, 465 ms apart.  This port had the first leg alone, played once.
+    add("houses_sold",
+        burst([(2500, 1000), (1000, 1300), (1300, 400), (400, 600)],
+              RETURN_BURST_MS),
+        "CHN 0x99C1/0x9A75/0x9AA7/0x9AD9",
+        "one unit going back to the bank")
     # Four sweeps, from the loop bounds inside the buy-houses routine at CHN
     # load 0xA07B-0xA135: up 1000->2500, down 2500->500, up 1000->2000, down
     # 2000->300, then Delay(50) and NoSound.  The three sweeps this port had
     # were taken from a routine outside that code and were the wrong shape.
+    #
+    # All four sit inside the per-unit loop, so this plays once for every
+    # house bought rather than once for the purchase: buying six units gave
+    # six identical bursts on the speaker, 514 ms apart.
     add("build",
-        sweep(1000, 2500) + sweep(2500, 500) + sweep(1000, 2000)
-        + sweep(2000, 300),
+        burst([(1000, 2500), (2500, 500), (1000, 2000), (2000, 300)],
+              BUILD_BURST_MS),
         "CHN 0xA07B/0xA0AD/0xA0DF/0xA111", "buying houses and hotels")
     add("trade", sweep(1000, 2500) + sweep(2500, 500), "CHN 0x7323/0x7355",
         "a deal between players")

@@ -85,6 +85,11 @@ class GameState:
 
     current: int = 0
     dice: tuple[int, int] = (0, 0)
+    # Where the next house lands on each colour group, one 1-based cursor
+    # per group as the original keeps them in its group records.  Not derived
+    # from the board: it survives purchases and sales, so two groups with the
+    # same houses on them can still build in different places.
+    build_cursor: dict[int, int] = field(default_factory=dict)
     doubles_run: int = 0
     # Display only: the board titles a repeat roll "<name> again"
     # instead of "<name>'s turn".  Kept apart from doubles_run because

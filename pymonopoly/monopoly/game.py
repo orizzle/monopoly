@@ -1378,6 +1378,16 @@ class Game:
             groups = data.color_group_ids()
         keys = dict((n, k) for k, n in data.GROUP_KEYS)
         listed = [g for g in data.color_group_ids() if g in groups]
+        # One eligible group is taken without asking.  CHN load 0x9078,
+        # right after the counting pass and before anything is drawn:
+        #
+        #     if count = 1 then begin Chosen := theOnlyOne; goto done end
+        #
+        # Captured both ways: a player owning only the Cyan group goes from
+        # the business menu straight to "Zoning Regulations allow 15", while
+        # one owning Cyan and Orange is asked which.
+        if len(listed) == 1:
+            return listed[0]
         lines = ["Tell me the color group", prompt, ""]
         for g in listed:
             lines.append(" " * data.GROUP_ROW_INDENT
@@ -1426,24 +1436,49 @@ class Game:
             return
         cost = rules.house_cost(group)
         name = data.COLOR_GROUPS[group].name
-        count = self.ask_number(
-            st.players[who].name,
-            [f"Zoning Regulations allow {allowed}",
-             f"units in the {name} group.",
-             f"There are {now or 'no'} units now.",
-             f"Each unit costs $ {cost}."],
-            "How many units will you buy? ", 1, allowed - now)
+        # No space after the dollar sign in any of these: the deed card
+        # writes "$ 100" in a column, but the prompts write "$50." against
+        # the text.  Captured at rows 5-8 of the panel, column 5.
+        prompt = "How many units will you buy? "
+        lines = [f"Zoning Regulations allow {allowed}",
+                 f"units in the {name} group.",
+                 f"There are {now or 'no'} units now.",
+                 f"Each unit costs ${cost}."]
+        count = self.ask_number(st.players[who].name, lines,
+                                prompt, 1, allowed - now)
         if not count:
             return
         total = count * cost
         if st.players[who].cash < total:
             self.invalid(["You can't afford that."])
             return
+        # The total appears two rows under the question, on the screen that
+        # is already up -- not in a fresh panel with a "<Press Any Key>",
+        # which is what this port used to do.  Then the money goes, and only
+        # then do the houses start going up.
+        body = lines + ["", f"{prompt}{count}", "", f"That will cost ${total}."]
+        self.notice(st.players[who].name, body)
         self.count_cash(who, -total)
-        self.cue("build")
-        for pos in rules.distribute_units(st, group, count):
-            st.props[pos].houses += 1
-        self.announce(st.players[who].name, [f"That will cost $ {total}."])
+        self.place_units(rules.distribute_units(st, group, count), body, +1)
+
+    def place_units(self, squares: list[int], body: list[str],
+                    delta: int) -> None:
+        """Put up or take down one unit at a time, as the original does.
+
+        Each pass draws the title deed of the square receiving or giving up
+        the unit and plays a whole burst of the sound -- the four sweeps are
+        inside the loop, not around it -- so six houses make six bursts, not
+        one.  Measured off the speaker at 514 ms a house going up and 464 ms
+        coming down.
+        """
+        st = self.state
+        cue = "build" if delta > 0 else "houses_sold"
+        beat = graphics.BUILD_UNIT_MS if delta > 0 else graphics.RETURN_UNIT_MS
+        for pos in squares:
+            st.props[pos].houses += delta
+            self.notice(st.players[st.current].name, body, deed=pos)
+            self.cue(cue)
+            self.hold(beat)
 
     def return_flow(self) -> None:
         st = self.state
@@ -1464,19 +1499,22 @@ class Game:
             return
         each = rules.sale_value_per_unit(group)
         name = data.COLOR_GROUPS[group].name
-        count = self.ask_number(
-            st.players[who].name,
-            [f"There are {now} units on", f"the {name} group.",
-             f"Each will bring $ {each}."],
-            "How many units to return? ", 1, now)
+        # One line, with the group's name in it -- "There are 6 units on
+        # Cyan." -- not two saying "units on" and "the Cyan group."  The
+        # string at CHN 0x69C6 is " units on " and the name is written
+        # straight after it, in the group's own colours.
+        prompt = "How many units to return? "
+        lines = [f"There are {now} units on {name}.",
+                 f"Each will bring ${each}."]
+        count = self.ask_number(st.players[who].name, lines,
+                                prompt, 1, now)
         if not count:
             return
-        self.cue("houses_sold")
-        for pos in rules.collect_units(st, group, count):
-            st.props[pos].houses -= 1
         gain = count * each
+        body = lines + ["", f"{prompt}{count}", "", f"That will bring ${gain}."]
+        self.notice(st.players[who].name, body)
         self.receive(who, gain)
-        self.announce(st.players[who].name, [f"That will bring $ {gain}."])
+        self.place_units(rules.collect_units(st, group, count), body, -1)
 
     def _ask_player(self, lines: list[str]) -> int | None:
         """Ask for another player by name.

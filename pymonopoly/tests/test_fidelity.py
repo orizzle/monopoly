@@ -473,6 +473,116 @@ class JailScreens(unittest.TestCase):
              (19, 8, "times"), (25, 8, "and"), (29, 8, "must"), (34, 8, "pay.")])
 
 
+HOUSES = Path(__file__).resolve().parent / "fixtures" / "houses"
+
+
+@unittest.skipUnless(HOUSES.is_dir(), "house captures not available")
+class BuildingScreens(unittest.TestCase):
+    """Buying and returning houses, against captures of the real flow.
+
+    The captures come from saves edited to give one player a whole colour
+    group -- property records start at file offset 136, five bytes a square,
+    owner at +0 and houses at +3, players counted from one.
+    """
+
+    def rows(self, name, first=5, last=13):
+        """The left-hand column of a business screen, row by row."""
+        from verify_pixels import decode_capture
+
+        scr, _ = decode_capture(str(HOUSES / name))
+        out = []
+        for row, line in enumerate(scr.as_text().splitlines(), start=1):
+            text = line[:47].rstrip()
+            if first <= row <= last and text.strip():
+                out.append((row, text.strip()))
+        return out
+
+    def test_the_buy_prompt_reads_as_captured(self):
+        self.assertEqual(self.rows("buy-units.png"), [
+            (5, "Zoning Regulations allow 15"),
+            (6, "units in the Cyan group."),
+            (7, "There are no units now."),
+            (8, "Each unit costs $50."),
+            (10, "How many units will you buy? 6"),
+            (12, "That will cost $300."),
+        ])
+
+    def test_the_return_prompt_reads_as_captured(self):
+        """One line naming the group, not two, and no space after the $."""
+        self.assertEqual(self.rows("return-units.png"), [
+            (5, "There are 6 units on Cyan."),
+            (6, "Each will bring $25."),
+            (8, "How many units to return? 6"),
+            (10, "That will bring $150."),
+        ])
+
+    def test_the_port_composes_the_same_lines(self):
+        from monopoly import data, rules
+
+        group = 2                                     # Cyan
+        allowed = rules.max_units_in_group(group)
+        cost = rules.house_cost(group)
+        each = rules.sale_value_per_unit(group)
+        name = data.COLOR_GROUPS[group].name
+        self.assertEqual(
+            [f"Zoning Regulations allow {allowed}",
+             f"units in the {name} group.",
+             f"There are {0 or 'no'} units now.",
+             f"Each unit costs ${cost}."],
+            ["Zoning Regulations allow 15", "units in the Cyan group.",
+             "There are no units now.", "Each unit costs $50."])
+        self.assertEqual(
+            [f"There are 6 units on {name}.", f"Each will bring ${each}."],
+            ["There are 6 units on Cyan.", "Each will bring $25."])
+
+    def test_the_group_picker_lists_only_what_can_be_built_on(self):
+        """Captured with two complete groups owned, one player."""
+        self.assertEqual(self.rows("group-picker.png", first=5, last=9), [
+            (5, "Tell me the color group"),
+            (6, "you wish to improve."),
+            (7, "Cyan"),
+            (8, "Orange"),
+            (9, "or None... changed my mind."),
+        ])
+
+    def marks(self, name):
+        """The house marks on the deed card: (count of cells, colours)."""
+        from verify_pixels import decode_capture
+
+        from monopoly import screens
+
+        scr, _ = decode_capture(str(HOUSES / name))
+        left, top = screens.DEED_PANEL[0], screens.DEED_PANEL[1]
+        cells = [scr.cell(left + i, top + 1) for i in range(12)]
+        card = cells[-1][1]                           # the card's own attribute
+        return [(ch, attr) for ch, attr in cells if attr != card]
+
+    def test_one_house_is_two_cells_wide(self):
+        """Each house is two blocks and a space, so one house marks two."""
+        self.assertEqual(len(self.marks("deed-one-house.png")), 2)
+
+    def test_a_hotel_is_a_solid_run_of_six(self):
+        self.assertEqual(len(self.marks("deed-hotel.png")), 6)
+
+    def test_the_port_draws_the_same_widths(self):
+        from monopoly import cga, data, screens
+
+        for houses, expected in ((1, 2), (2, 4), (4, 8),
+                                 (data.HOUSES_PER_HOTEL, 6), (6, 0)):
+            with self.subTest(houses=houses):
+                scr = cga.Screen()
+                blank = scr.cell(screens.DEED_PANEL[0] + 2,
+                                 screens.DEED_PANEL[1] + 1)
+                screens.deed_houses(scr, houses, 3)
+                marked = 0
+                for i in range(12):
+                    cell = scr.cell(screens.DEED_PANEL[0] + 2 + i,
+                                    screens.DEED_PANEL[1] + 1)
+                    if cell != blank and cell[0] == screens.BLOCK:
+                        marked += 1
+                self.assertEqual(marked, expected)
+
+
 class CueNames(unittest.TestCase):
     """Every cue a port asks for must exist.
 
@@ -509,6 +619,51 @@ class CueNames(unittest.TestCase):
         spk = sound.Speaker(enabled=False)
         with self.assertRaises(KeyError):
             spk.cue("no_such_cue")
+
+
+class BuildingSounds(unittest.TestCase):
+    """The house sounds, against the speaker log of a real purchase.
+
+    Six units bought and the same six sold gave twelve bursts, not two: both
+    loops carry their sweeps inside them, so the sound belongs to the house
+    and not to the transaction.
+    """
+
+    def test_building_is_four_sweeps(self):
+        from monopoly import sound
+
+        tones = sound.CUES["build"].tones
+        turns = [a for a, b in zip(tones, tones[1:]) if
+                 (b[0] > a[0]) != (tones[1][0] > tones[0][0])]
+        self.assertEqual([hz for hz, _ms in tones[:1]], [1000])
+        self.assertEqual(tones[-1][0], 300)
+        self.assertGreaterEqual(len(turns), 1)
+
+    def test_returning_is_four_sweeps_the_other_way(self):
+        from monopoly import sound
+
+        tones = sound.CUES["houses_sold"].tones
+        self.assertEqual(tones[0][0], 2500)
+        self.assertEqual(tones[-1][0], 600)
+
+    def test_neither_burst_lasts_anything_like_a_second(self):
+        """The loops carry no Delay, so a burst is a chirp."""
+        from monopoly import sound
+
+        build = sum(ms for _hz, ms in sound.CUES["build"].tones)
+        sold = sum(ms for _hz, ms in sound.CUES["houses_sold"].tones)
+        self.assertAlmostEqual(build, sound.BUILD_BURST_MS, delta=1)
+        self.assertAlmostEqual(sold, sound.RETURN_BURST_MS, delta=1)
+        self.assertLess(build, 200, "measured at 137 ms, not 2.8 seconds")
+
+    def test_a_burst_fits_inside_its_unit(self):
+        """Each house gets its own burst, with room to spare in the beat."""
+        from monopoly import graphics, sound
+
+        self.assertLess(sum(ms for _hz, ms in sound.CUES["build"].tones),
+                        graphics.BUILD_UNIT_MS)
+        self.assertLess(sum(ms for _hz, ms in sound.CUES["houses_sold"].tones),
+                        graphics.RETURN_UNIT_MS)
 
 
 class LandingChime(unittest.TestCase):

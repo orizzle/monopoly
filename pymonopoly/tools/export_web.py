@@ -67,6 +67,8 @@ def main() -> int:
         groups.append({
             "name": g.name,
             "members": list(g.members),
+            # the record's own order, descending, which the build cursor walks
+            "buildOrder": list(g.build_order),
             "size": g.size,
             "houseCost": g.house_cost,
             "buildable": bool(g.buildable),
@@ -136,6 +138,8 @@ def main() -> int:
             "raisePauseMs": graphics.RAISE_PAUSE_MS,
             "jailFineMs": graphics.JAIL_FINE_MS,
             "jailRollPauseMs": graphics.JAIL_ROLL_PAUSE_MS,
+            "buildUnitMs": graphics.BUILD_UNIT_MS,
+            "returnUnitMs": graphics.RETURN_UNIT_MS,
             "jailPromptCol": graphics.JAIL_PROMPT_COL,
             "jailPromptRow": graphics.JAIL_PROMPT_ROW,
             "jailOptionRow": graphics.JAIL_OPTION_ROW,

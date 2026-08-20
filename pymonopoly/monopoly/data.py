@@ -42,6 +42,11 @@ class ColorGroup:
 
     name: str  # +0   string[12]
     members: tuple[int, ...]  # +15  board positions (converted to 0-based)
+    # The same squares in the order the record lists them, which is
+    # descending.  That order is not decoration: the buy- and return-houses
+    # loops walk it with a rotating cursor, so it decides which square each
+    # house actually lands on.  See rules.build_order.
+    build_order: tuple[int, ...]
     ttext: int  # +23  CGA foreground on the board
     tback: int  # +25  CGA background on the board
     ttext2: int  # +27  second pair, used on the title deed card
@@ -56,11 +61,13 @@ class ColorGroup:
 
 
 def _grp(name, members, ttext, tback, ttext2, tback2, house_cost, buildable):
-    # Members are stored 1-based and in descending order in the binary; the
-    # order carries no meaning, so sort them into board order here.
+    # Members are stored 1-based and in descending order in the binary.  The
+    # sorted tuple is the convenient one for ownership and rent; the original
+    # order is kept alongside it because building depends on it.
     return ColorGroup(
         name=name,
         members=tuple(sorted(m - 1 for m in members)),
+        build_order=tuple(m - 1 for m in members),
         ttext=ttext,
         tback=tback,
         ttext2=ttext2,
