@@ -757,12 +757,17 @@ class Game:
         pos = ply.position
         sq = data.PLACE[pos]
 
-        # The piece flashes where it stops while the board names the square,
-        # under the 2002/3005/2501 chime -- about 2.2 s.  The note that used
-        # to sit here, that the original is silent on landing, was wrong: it
-        # was read off the landing routine at 0x6620, which indeed makes no
-        # sound, while the chime comes from the flash loop at 0x5143.
-        self.cue("landing")
+        # No chime here.  The flash loop at 0x5143 runs *before* the piece
+        # sets off, not when it stops, and the landing routine at 0x6620
+        # makes no sound at all -- which is what the note here said before I
+        # overturned it on a misreading.  Measured again to be sure: across
+        # three speaker logs, 26 chimes, not one of them within a second of
+        # the end of a walk.  The nearest walking step before each is between
+        # 2.8 and 13 seconds earlier, which is the previous turn, while the
+        # next step after it follows within a millisecond or two -- the chime
+        # runs straight into the walk it introduces.  The piece still blinks
+        # where it stops, and the board still names the square; both are
+        # silent.
         self.announce(ply.name, ["You have landed on", sq.name],
                       deed=pos if sq.ownable else None)
 

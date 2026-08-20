@@ -942,16 +942,17 @@ export class Game {
     await this.landingFlash(who, (start + steps) % 40);
   }
 
-  // Where the piece stops it flashes, and the board names the square it has
-  // reached -- "You have landed on <name>" in the message area, under the
-  // 2002/3005/2501 chime, for about 2.2 s before anything else happens.
-  // Captured from the real program: the port used to blink silently and, for
-  // a property, never named the square at all -- it cut straight to the text
-  // screen.
+  // Where the piece stops it flashes and the board names the square it has
+  // reached -- "You have landed on <name>" in the message area -- but in
+  // silence.  The flash loop at 0x5143 runs *before* the piece sets off, and
+  // the landing routine at 0x6620 makes no sound at all.  Measured across
+  // three speaker logs: 26 chimes, not one within a second of the end of a
+  // walk; the nearest walking step before each is 2.8 to 13 seconds earlier,
+  // which is the previous turn, while the next step follows within a
+  // millisecond or two.  The chime introduces a walk, it does not close one.
   async landingFlash(who, pos) {
     const G = DATA.geom;
     const line = ["You have landed on", SQ[pos].name];
-    this.cue("landing");
     for (let i = 0; i < G.advanceBlits; i++) {
       this.showBoard(line, { hide: i % 2 ? [who] : [] });
       await sleep(G.advanceBlitMs);

@@ -259,3 +259,53 @@ class TestJailTurn(unittest.TestCase):
         self.assertEqual(g.board_title(), "ann's turn")
         g.jail_turn(0)
         self.assertEqual(g.board_title(), "ann again")
+
+
+class TestChimeOrder(unittest.TestCase):
+    """The chime introduces a walk; it never closes one.
+
+    Measured across three speaker logs of the original: 26 chimes, and not
+    one within a second of the end of a walk.  The nearest walking step
+    before each is between 2.8 and 13 seconds earlier -- the previous turn --
+    while the next step after it follows within a millisecond or two.  So an
+    ordinary move carries exactly one, before the piece sets off.
+
+    This port played a second one when the piece stopped, under "You have
+    landed on <name>", so every move chimed twice.
+    """
+
+    def move_cues(self, start, steps, answers="g"):
+        """The cues a single move emits, from setting off to the prompt."""
+        term = AutoTerminal(["Ann", "Ben", ""], prefer=answers, budget=200)
+        game = Game(term, seed=5, audio="off")
+        game.state = GameState.new_game(["Ann", "Ben"], seed=5)
+        game.state.players[0].position = start
+        game.state.current = 0
+        heard = []
+        original = game.cue
+        game.cue = lambda name: (heard.append(name), original(name))[1]
+        try:
+            game.move_by(0, steps)
+        except Quit:
+            pass
+        return heard
+
+    def test_an_ordinary_move_chimes_once(self):
+        # 0 -> 3, Baltic Avenue: unowned, so the move ends at a prompt
+        # rather than dragging in a card or a jail trip.
+        heard = self.move_cues(0, 3)
+        self.assertEqual(heard.count("landing"), 1,
+                         f"one chime per move, got {heard}")
+
+    def test_the_chime_comes_before_anything_else_in_the_move(self):
+        heard = self.move_cues(0, 3)
+        self.assertEqual(heard[0], "landing",
+                         f"the chime introduces the move: {heard}")
+
+    def test_moves_onto_several_squares_all_chime_once(self):
+        for start, steps in ((0, 5), (10, 4), (20, 6), (25, 3)):
+            with self.subTest(start=start, steps=steps):
+                heard = self.move_cues(start, steps)
+                self.assertLessEqual(
+                    heard.count("landing"), 1,
+                    f"{start}+{steps} chimed {heard.count('landing')} times")
