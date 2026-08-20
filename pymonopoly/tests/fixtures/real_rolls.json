@@ -1,0 +1,100 @@
+{
+ "note": "Dice the real program rolled, with the draw index each pair was taken at. Captured under instrumented DOSBox watching RandSeed (DS:0x01FC) and the dice (DS:0x0264) in one ordered log; DS is 0x10DC while the chained code runs. Seed starts 0.",
+ "rolls": [
+  {
+   "draw_index": 453,
+   "die1": 1,
+   "die2": 2
+  },
+  {
+   "draw_index": 663,
+   "die1": 5,
+   "die2": 1
+  },
+  {
+   "draw_index": 921,
+   "die1": 3,
+   "die2": 4
+  },
+  {
+   "draw_index": 1171,
+   "die1": 6,
+   "die2": 4
+  },
+  {
+   "draw_index": 1421,
+   "die1": 3,
+   "die2": 1
+  },
+  {
+   "draw_index": 1671,
+   "die1": 2,
+   "die2": 5
+  },
+  {
+   "draw_index": 1937,
+   "die1": 5,
+   "die2": 2
+  },
+  {
+   "draw_index": 2179,
+   "die1": 2,
+   "die2": 6
+  },
+  {
+   "draw_index": 2445,
+   "die1": 2,
+   "die2": 1
+  },
+  {
+   "draw_index": 2687,
+   "die1": 3,
+   "die2": 3
+  },
+  {
+   "draw_index": 3073,
+   "die1": 2,
+   "die2": 2
+  },
+  {
+   "draw_index": 3491,
+   "die1": 1,
+   "die2": 2
+  },
+  {
+   "draw_index": 3877,
+   "die1": 4,
+   "die2": 4
+  },
+  {
+   "draw_index": 4383,
+   "die1": 2,
+   "die2": 1
+  },
+  {
+   "draw_index": 4625,
+   "die1": 1,
+   "die2": 3
+  },
+  {
+   "draw_index": 4907,
+   "die1": 3,
+   "die2": 3
+  },
+  {
+   "draw_index": 5293,
+   "die1": 5,
+   "die2": 2
+  },
+  {
+   "draw_index": 5767,
+   "die1": 3,
+   "die2": 4
+  },
+  {
+   "draw_index": 5961,
+   "die1": 3,
+   "die2": 3
+  }
+ ]
+}

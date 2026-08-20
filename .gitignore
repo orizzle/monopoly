@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# The 1985 program itself.  MONOPOLY.COM, MONOCODE.CHN, MONOCODE.000 and
+# MONOGRAF.GRA are Don Phillip Gibson's commercial release, not part of this
+# port, and this is a public repository -- so they are deliberately not
+# redistributed here.  Put your own copy in game/ and the tools and the
+# fidelity tests will find it; without it those tests skip rather than fail.
+game/
+game-det/
+game-diag/
+game-fixed/
+extracted/
+
+# Regenerable output: screenshots of the port, capture runs, emulator dumps.
+portshots/
+*.iolog
+*.avi
+*.mkv
+monopoly.zip

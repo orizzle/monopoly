@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Crect width=%2216%22 height=%2216%22 fill=%22%23000%22/%3E%3Crect x=%222%22 y=%222%22 width=%2212%22 height=%2212%22 fill=%22none%22 stroke=%22%23ff55ff%22 stroke-width=%221%22/%3E%3Ccircle cx=%225%22 cy=%225%22 r=%221%22 fill=%22%23fff%22/%3E%3Ccircle cx=%2211%22 cy=%2211%22 r=%221%22 fill=%22%23fff%22/%3E%3C/svg%3E">
+<title>Monopoly (1985) &mdash; browser port</title>
+<style>
+  :root { --ground:#101014; --ink:#d8d8e4; --muted:#8a8a9c; --edge:#2a2a36; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font: 15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 14px; padding: 18px;
+  }
+  h1 { font-size: 15px; font-weight: 600; margin: 0; letter-spacing: .01em; }
+  h1 span { color: var(--muted); font-weight: 400; }
+  #screen {
+    image-rendering: pixelated;
+    width: min(96vw, 1280px); height: auto;   /* 720x400 text, 640x400 board */
+    background: #000; border: 1px solid var(--edge); border-radius: 4px;
+    display: block;
+  }
+  #kbd {
+    position: fixed; top: 0; left: 0; width: 1px; height: 1px;
+    opacity: 0; border: 0; padding: 0; margin: 0; font-size: 16px;
+    z-index: -1; caret-color: transparent;
+  }
+  #screen { touch-action: manipulation; }
+  #status { color: var(--muted); font-size: 13px; min-height: 1.4em;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  #start {
+    position: fixed; inset: 0; background: rgba(8,8,12,.94);
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 16px; text-align: center; padding: 24px;
+  }
+  #start button {
+    font: 600 15px/1 system-ui, sans-serif; color: #101014; background: #55ffff;
+    border: 0; border-radius: 6px; padding: 12px 22px; cursor: pointer;
+  }
+  #start p { max-width: 46ch; color: var(--muted); margin: 0; }
+  .hint { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+          color: var(--ink); }
+</style>
+</head>
+<body>
+  <h1>M O N O P O L Y <span>&mdash; 1985 MS-DOS, ported to the browser</span></h1>
+  <!-- The on-screen keyboard only appears while a focusable field has focus,
+       so this exists purely to hold that focus.  It cannot be display:none or
+       visibility:hidden -- those cannot take focus -- hence the 1px opacity-0
+       field.  16px font size stops iOS zooming the page when it focuses. -->
+  <input id="kbd" type="text" inputmode="text" autocapitalize="off"
+         autocorrect="off" autocomplete="off" spellcheck="false"
+         aria-label="keyboard input">
+  <canvas id="screen" width="720" height="400"></canvas>
+  <div id="status">loading&hellip;</div>
+
+
+<script type="module">
+  import { Game } from "./game.js";
+
+  const canvas = document.getElementById("screen");
+  const status = document.getElementById("status");
+
+  // The game starts straight away.  Browsers will not open an audio context
+  // until the page has been interacted with, so the speaker is resumed on the
+  // first keypress instead of behind a start button.
+  // Keep the soft keyboard up on touch devices.  It cannot be forced to stay
+  // open -- only the OS decides that, and the user can always dismiss it --
+  // but re-focusing on blur and on every tap brings it straight back.  The
+  // first focus has to follow a real gesture, so on touch the hint asks for
+  // one rather than pretending it will appear by itself.
+  const kbd = document.getElementById("kbd");
+  const focusKbd = () => {
+    try { kbd.focus({ preventScroll: true }); } catch (_) { kbd.focus(); }
+  };
+  const touch = matchMedia("(hover: none) and (pointer: coarse)").matches
+    || "ontouchstart" in window;
+
+  kbd.addEventListener("blur", () => setTimeout(focusKbd, 50));
+  for (const ev of ["touchend", "click"]) {
+    document.addEventListener(ev, focusKbd, { passive: true });
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) focusKbd();
+  });
+  focusKbd();
+
+  const game = new Game(canvas, status);
+  status.textContent = touch
+    ? "tap the screen to bring up the keyboard"
+    : "F1 toggles sound";
+  (async () => {
+    try {
+      await game.run();
+    } catch (err) {
+      status.textContent = "error: " + err.message;
+      console.error(err);
+    }
+  })();
+</script>
+</body>
+</html>
