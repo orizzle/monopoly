@@ -335,9 +335,15 @@ export class Game {
     this.framed(T.businessPanel, C.BROWN, C.GREEN);
     const ink = at(C.WHITE, C.GREEN);
     const keyInk = at(C.YELLOW, C.GREEN);
+    // Centred on a fixed column rather than inside the panel, the same way
+    // the turn title is but one column right of it.  Measured across 29
+    // captured business screens with headers of four lengths: 23 characters
+    // starts at column 9, 25 and 26 at column 8, and 28 at column 7 -- all
+    // four are 21 - (len + 1) // 2.  Centring within the panel agrees on the
+    // even lengths and puts every odd one a column right.
     const title = `${ply.name} on ${SQ[pos].name}.`;
-    t.write(l + 1 + Math.floor(((r - l - 1) - title.length) / 2), top + 1,
-            title, ink);
+    t.write(T.businessTitleCentre - Math.floor((title.length + 1) / 2),
+            top + 1, title, ink);
     let row = top + 3;
     for (const line of [...lines, ...(options ? ["", ...options] : [])]) {
       if (row > bot - 1) break;
@@ -436,8 +442,12 @@ export class Game {
         // #7: the name keeps the capitalisation it has in the table --
         // lower-casing it on mortgage was mine.  #8: a mortgaged holding is
         // distinguished by colour instead, drawn in light red.
-        let mark = sq.short;
-        if (!ps.mortgaged && ps.houses) mark = `${mark}${ps.houses}`;
+        // Nothing is appended for development either: the captures show
+        // "OriVerCon" with two houses on Connecticut, and again with a hotel
+        // on it, so the house count this used to add is not on the
+        // original's board.  The names sit three columns apart, which leaves
+        // no room for it.
+        const mark = sq.short;
         const col = sq.screenPos + T.holdingsBaseCol + T.holdingsPlayerStep * i;
         const row = T.holdingsBaseRow + sq.side;
         // Mortgaged overrides the group's colours with LightGray on Black

@@ -200,6 +200,7 @@ def main() -> int:
             "holdingsPlayerStep": screens.HOLDINGS_PLAYER_STEP,
             "holdingsBaseRow": screens.HOLDINGS_BASE_ROW,
             "businessPanel": list(screens.BUSINESS_PANEL),
+            "businessTitleCentre": screens.BUSINESS_TITLE_CENTRE,
             "businessOptions": list(screens.BUSINESS_OPTIONS),
             # The build/return screens take one keypress, not a typed name.
             "groupKeys": [list(x) for x in data.GROUP_KEYS],

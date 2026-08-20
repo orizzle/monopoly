@@ -545,6 +545,52 @@ class BuildingScreens(unittest.TestCase):
             (9, "or None... changed my mind."),
         ])
 
+    def test_the_whole_buy_screen_is_pixel_exact(self):
+        """The strongest check available: render it and diff the pixels.
+
+        Comparing cells is not enough -- a space and a full block render the
+        same when the colour that differs is the one you cannot see -- so
+        this rebuilds the captured state, draws the screen, and compares the
+        two as images.  Reconstructed from the capture itself: alice on
+        Oriental Avenue with $4700 against bob's $1500, holding the Cyan
+        group with the sixth house going up, so Connecticut and Vermont carry
+        two and Oriental one.  It was this diff that turned up the house
+        marks taking the card body's colours instead of the title band's, the
+        header centred inside the panel instead of on a fixed column, and a
+        house count appended to the holdings row that the original never
+        writes.
+        """
+        import numpy as np
+        from verify_pixels import decode_capture
+
+        from monopoly.display import NullTerminal
+        from monopoly.game import Game
+        from monopoly.state import GameState
+
+        want, _ = decode_capture(str(HOUSES / "buy-units.png"))
+        g = Game(NullTerminal(), seed=1, audio="off")
+        g.state = GameState.new_game(["alice", "bob"], seed=1)
+        st = g.state
+        st.players[0].cash, st.players[1].cash = 4700, 1500
+        st.players[0].position, st.current = 6, 0
+        for square, houses in ((6, 1), (8, 2), (9, 2)):
+            st.props[square].owner = 0
+            st.props[square].houses = houses
+        g.in_business = True
+        g.group_ink = 2
+
+        prompt = "How many units will you buy? "
+        lines = ["Zoning Regulations allow 15", "units in the Cyan group.",
+                 "There are no units now.", "Each unit costs $50."]
+        g._panel("alice", lines + ["", f"{prompt}6", "",
+                                   "That will cost $300."], None, 6)
+
+        mine = np.array(g.scr.render())
+        theirs = np.array(want.render())
+        differing = int(np.any(mine != theirs, axis=-1).sum())
+        self.assertEqual(differing, 0,
+                         f"{differing} pixels differ from the original")
+
     def attrs(self, name, row, first, last):
         from verify_pixels import decode_capture
 

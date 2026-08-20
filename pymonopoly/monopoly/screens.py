@@ -98,6 +98,14 @@ def centered_up(text: str, left: int, right: int) -> int:
 # at column 20 for both.
 TITLE_CENTRE = 20
 
+# The business panel's "<name> on <square>." header is centred the same way,
+# on a fixed column rather than inside the panel, but one column right of the
+# turn title.  Measured across 29 captured business screens with headers of
+# four lengths: 23 characters starts at column 9, 25 and 26 at column 8, and
+# 28 at column 7 -- all four are 21 - (len + 1) // 2.  Centring it within the
+# panel agrees on the even lengths and puts every odd one a column right.
+BUSINESS_TITLE_CENTRE = 21
+
 
 def centered_on(text: str, centre: int = TITLE_CENTRE) -> int:
     return centre - (len(text) + 1) // 2
@@ -247,7 +255,8 @@ def business_panel(scr: Screen, title: str,
                    options: list[str] | None = None) -> None:
     left, top, right, bottom = BUSINESS_PANEL
     panel(scr, left, top, right, bottom, BROWN, GREEN)
-    scr.write_at(centered(title, left, right), top + 1, title, WHITE, GREEN)
+    scr.write_at(centered_on(title, BUSINESS_TITLE_CENTRE), top + 1, title,
+                 WHITE, GREEN)
     # Note the colours are the reverse of the small prompt panel: here the
     # body is white and the hot key is yellow.
     row = top + 3
@@ -391,7 +400,7 @@ def _deed_colors(pos: int) -> tuple[int, int, int, int]:
     return grp.ttext, grp.tback, grp.ttext2, grp.tback2
 
 
-def deed_houses(scr: Screen, houses: int, body_bg: int) -> None:
+def deed_houses(scr: Screen, houses: int, title_bg: int) -> None:
     """Mark a developed property on its card, at the card's (3,2).
 
     Disassembled at CHN load 0x6959.  Houses and hotels are drawn quite
@@ -417,13 +426,13 @@ def deed_houses(scr: Screen, houses: int, body_bg: int) -> None:
     left, top = DEED_PANEL[0], DEED_PANEL[1]
     if houses == data.HOUSES_PER_HOTEL:
         mark = chr(BLOCK) * HOTEL_BLOCKS
-        fg = WHITE if body_bg in (4, 6) else RED
+        fg = WHITE if title_bg in (4, 6) else RED
     elif 1 <= houses < data.HOUSES_PER_HOTEL:
         mark = (chr(BLOCK) * 2 + " ") * houses
-        fg = WHITE if body_bg in (2, 3) else GREEN
+        fg = WHITE if title_bg in (2, 3) else GREEN
     else:
         return
-    scr.write_at(left + 2, top + 1, mark, fg, body_bg)
+    scr.write_at(left + 2, top + 1, mark, fg, title_bg)
 
 
 def _deed_frame(scr: Screen, pos: int) -> tuple[int, int]:
@@ -458,7 +467,7 @@ def draw_deed_card(scr: Screen, pos: int, state: GameState | None = None) -> Non
     if not sq.ownable:
         return
     _deed_frame(scr, pos)
-    _t_fg, _t_bg, fg, bg = _deed_colors(pos)
+    _t_fg, title_bg, fg, bg = _deed_colors(pos)
 
     # Row and column positions differ per card type; all measured from
     # captures, and none of them are centred -- the original writes
@@ -502,7 +511,11 @@ def draw_deed_card(scr: Screen, pos: int, state: GameState | None = None) -> Non
                  f"Mortgage value is ${rules.mortgage_value(pos)}.", fg, bg)
 
     if state is not None and state.props[pos].houses:
-        deed_houses(scr, state.props[pos].houses, bg)
+        # The marks go in the title band, so they take that band's
+        # background and not the card interior's.  Passing the body colour
+        # put Cyan's houses green on light grey where the capture has them
+        # white on cyan -- the white/green choice keys off the background.
+        deed_houses(scr, state.props[pos].houses, title_bg)
 
     if state is not None and state.props[pos].mortgaged:
         scr.write_at(centered("MORTGAGED", 51, 78), mortgage_row - 2,
@@ -561,10 +574,12 @@ def holdings_map(scr: Screen, state: GameState, player: int) -> None:
 
         # The short name keeps its capitalisation; a mortgaged holding is
         # distinguished by colour rather than by case, which is what the
-        # original does and what lower-casing it here got wrong.
+        # original does and what lower-casing it here got wrong.  Nothing is
+        # appended for development either: the captures show "OriVerCon" with
+        # two houses on Connecticut, and again with a hotel on it, so the
+        # house count this port used to add is not on the original's board.
+        # The names sit three columns apart, which leaves no room for it.
         mark = sq.short
-        if not st.mortgaged and st.houses:
-            mark = f"{mark}{st.houses}"
 
         col = sq.screen_pos + HOLDINGS_BASE_COL + HOLDINGS_PLAYER_STEP * player
         row = HOLDINGS_BASE_ROW + sq.side
