@@ -1728,12 +1728,19 @@ export class Game {
       ply.jailTurns = 0;
       await this.animateMove(who, ply.pos, a + b);
       await this.landOn(who, a + b);
-      // Leaving jail still ends the turn like any other move: the square is
-      // resolved and then the Business/Go on prompt comes up.  Without this
-      // the turn passed straight to the next player, so a property landed on
-      // out of jail could never be bought.
-      if (!ply.bankrupt) await this.businessOrGo(who);
-      return false;
+      if (ply.bankrupt) return false;
+      // The square is resolved and the Business/Go on prompt comes up, as
+      // after any move.
+      await this.businessOrGo(who);
+      // And the throw still earns another roll, like any other double.  The
+      // advance-player test at CHN load 0xE538 only moves on when the
+      // doubles counter is zero, and leaving jail this way sets it to one.
+      // Captured: alice rolls her way out without paying, walks to Kentucky
+      // Avenue under "alice's turn", and the board is retitled "alice again"
+      // for the roll that follows.  This port ended the turn instead.
+      st.doubles = 1;
+      st.again = true;
+      return true;
     }
 
     if (ply.jailTurns >= 3) {
@@ -1795,10 +1802,17 @@ export class Game {
                                      `of $${owed} and now may proceed.`]);
     }
 
-    if (ply.inJail) { if (!await this.jailTurn(who)) { return; } }
-
+    // Reset before the jail call, not after: rolling a double out of jail
+    // seeds both -- it counts as the first double of a run and earns another
+    // roll -- and clearing them afterwards threw that away.
     st.doubles = 0;
     st.again = false;
+    if (ply.inJail) {
+      if (!await this.jailTurn(who)) return;
+      // A card drawn on the way out can put the player straight back.
+      if (ply.inJail) return;
+    }
+
     for (;;) {
       const [a, b] = await this.rollDice();
       const total = a + b;

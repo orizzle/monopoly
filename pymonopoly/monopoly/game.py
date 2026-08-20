@@ -1047,7 +1047,18 @@ class Game:
             ply.in_jail = False
             ply.jail_turns = 0
             self.move_by(who, a + b)
-            return False
+            if ply.bankrupt:
+                return False
+            # And the throw still earns another roll, like any other double.
+            # The advance-player test at CHN load 0xE538 only moves on when
+            # the doubles counter is zero, and leaving jail this way sets it
+            # to one.  Captured: alice rolls her way out without paying,
+            # walks to Kentucky Avenue under "alice's turn", and the board is
+            # retitled "alice again" for the roll that follows -- then again
+            # for the one after that.  This port ended the turn instead.
+            st.doubles_run = 1
+            st.again = True
+            return True
 
         if ply.jail_turns >= 3:
             self.jail_fine_due(who, a + b)

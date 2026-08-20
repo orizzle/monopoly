@@ -196,3 +196,66 @@ class TestScreens(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestJailTurn(unittest.TestCase):
+    """Getting out of jail, and what the turn does afterwards.
+
+    Measured against the original by loading a game straight into jail and
+    capturing every board frame: alice chooses Roll, throws a double, leaves
+    without paying, walks to Kentucky Avenue under "alice's turn", and the
+    board is then retitled "alice again" for a further roll.  So the escape
+    behaves like any other double -- it earns another go -- which is what the
+    advance-player test at CHN load 0xE538 says too: the turn only passes
+    when the doubles counter is zero.
+    """
+
+    def _jailed(self, throw):
+        g = Game(NullTerminal(), seed=1, audio="off")
+        g.state = GameState.new_game(["ann", "ben"], seed=1)
+        ply = g.state.players[0]
+        ply.in_jail, ply.position, ply.jail_turns = True, data.JAIL, 0
+        g.ask_on_board = lambda runs, keys: "r"      # choose Roll
+        g.roll_dice = lambda: throw
+        g.move_by = lambda who, steps: None          # no animation in tests
+        return g, ply
+
+    def test_doubles_leave_jail_and_earn_another_roll(self):
+        g, ply = self._jailed((3, 3))
+        carry_on = g.jail_turn(0)
+        self.assertTrue(carry_on, "the turn must continue after a double")
+        self.assertFalse(ply.in_jail)
+        self.assertEqual(ply.jail_turns, 0, "the roll count resets on release")
+        self.assertEqual(g.state.doubles_run, 1,
+                         "the escape counts as the first double of the run")
+        self.assertTrue(g.state.again, "the next roll is titled '<name> again'")
+
+    def test_a_failed_roll_ends_the_turn_in_jail(self):
+        g, ply = self._jailed((2, 5))
+        self.assertFalse(g.jail_turn(0))
+        self.assertTrue(ply.in_jail)
+        self.assertEqual(ply.jail_turns, 1)
+        self.assertFalse(g.state.again)
+
+    def test_the_third_failed_roll_takes_the_fine(self):
+        g, ply = self._jailed((2, 5))
+        ply.jail_turns = 2
+        before = ply.cash
+        self.assertFalse(g.jail_turn(0))
+        self.assertFalse(ply.in_jail, "the fine is forced, not offered")
+        self.assertEqual(ply.cash, before - data.JAIL_FINE)
+
+    def test_paying_leaves_jail_and_keeps_the_turn(self):
+        g, ply = self._jailed((2, 5))
+        g.ask_on_board = lambda runs, keys: "p"
+        before = ply.cash
+        self.assertTrue(g.jail_turn(0))
+        self.assertFalse(ply.in_jail)
+        self.assertEqual(ply.cash, before - data.JAIL_FINE)
+        self.assertFalse(g.state.again, "paying is not a double")
+
+    def test_the_board_titles_a_repeat_roll(self):
+        g, _ply = self._jailed((3, 3))
+        self.assertEqual(g.board_title(), "ann's turn")
+        g.jail_turn(0)
+        self.assertEqual(g.board_title(), "ann again")

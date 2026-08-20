@@ -420,6 +420,51 @@ class JailScreens(unittest.TestCase):
         self.assertEqual(placed[(27, 8)], "R")
         self.assertEqual(placed[(28, 8)], "oll?")
 
+    def title_of(self, name):
+        import verify_graphics as vg
+
+        runs = vg.runs(vg.find_text(self.capture(name), skip=(0, 0, 123, 123)))
+        return " ".join(t for _c, r, t, _a in runs if r <= 2)
+
+    def cash_of(self, name):
+        import verify_graphics as vg
+
+        runs = vg.runs(vg.find_text(self.capture(name), skip=(0, 0, 123, 123)))
+        return [t for _c, r, t, _a in runs if r >= 25 and t.isdigit()]
+
+    def test_rolling_out_of_jail_costs_nothing_and_earns_another_roll(self):
+        """The escape is a double like any other, so the turn carries on.
+
+        Both frames come from one game loaded straight into jail.  The player
+        had no Get Out of Jail Free card -- the captured prompt offers only
+        Pay and Roll -- and her cash is untouched at $1500 when she lands, so
+        she left by throwing a double rather than by paying the $50.  The
+        board is titled for her turn as she lands, and retitled "again" for
+        the roll that follows.
+        """
+        self.assertEqual(self.title_of("escape-landing.png"), "alice's turn")
+        self.assertEqual(self.cash_of("escape-landing.png")[0], "1500")
+        self.assertEqual(self.title_of("escape-again.png"), "alice again")
+
+    def test_the_port_titles_that_repeat_the_same_way(self):
+        from monopoly.display import NullTerminal
+        from monopoly.game import Game
+        from monopoly.state import GameState
+        from monopoly import data
+
+        g = Game(NullTerminal(), seed=1, audio="off")
+        g.state = GameState.new_game(["alice", "bob"], seed=1)
+        ply = g.state.players[0]
+        ply.in_jail, ply.position, ply.jail_turns = True, data.JAIL, 0
+        g.ask_on_board = lambda runs, keys: "r"
+        g.roll_dice = lambda: (3, 3)
+        g.move_by = lambda who, steps: None
+
+        self.assertEqual(g.board_title(), "alice's turn")
+        self.assertTrue(g.jail_turn(0), "the turn continues after the escape")
+        self.assertEqual(ply.cash, 1500, "no fine is paid on a double")
+        self.assertEqual(g.board_title(), "alice again")
+
     def test_the_third_roll_message_is_on_the_board(self):
         """Two lines at column 19, rows 7 and 8 -- not a four-line panel."""
         self.assertEqual(
